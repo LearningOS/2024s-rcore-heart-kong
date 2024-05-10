@@ -8,13 +8,21 @@ use bitflags::*;
 bitflags! {
     /// page table entry flags
     pub struct PTEFlags: u8 {
+        /// V bit
         const V = 1 << 0;
+        /// R bit
         const R = 1 << 1;
+        /// W bit
         const W = 1 << 2;
+        /// X bit
         const X = 1 << 3;
+        /// U bit
         const U = 1 << 4;
+        /// G bit
         const G = 1 << 5;
+        /// A bit
         const A = 1 << 6;
+        /// D bit
         const D = 1 << 7;
     }
 }
@@ -212,4 +220,13 @@ pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> &'static mut T {
         .translate_va(VirtAddr::from(va))
         .unwrap()
         .get_mut()
+}
+
+/// Get pa by va
+pub fn get_pa_by_va(token: usize, va: usize) -> PhysAddr {
+    let page_table = PageTable::from_token(token);
+    let va = VirtAddr::from(va);
+    let vpn = va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    va.get_pa(ppn)
 }

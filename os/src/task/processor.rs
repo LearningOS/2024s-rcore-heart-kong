@@ -8,6 +8,7 @@ use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
@@ -108,4 +109,28 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// Get the info of current `Running` task
+pub fn get_current_task_info(ti: &mut TaskInfo) {
+    current_task().unwrap().get_current_task_info(ti);
+}
+
+/// Change the syscall times of current `Running` task
+pub fn change_current_task(syscall_id: usize) {
+    current_task().unwrap().change_current_task(syscall_id);
+}
+/// Malloc space
+pub fn malloc_space_current_task(start_va: usize, end_va: usize, perm: u8) -> isize {
+    current_task().unwrap().malloc_space_current_task(start_va, end_va, perm)
+}
+
+/// free space
+pub fn free_space_current_task(start_va: usize, end_va: usize) -> isize {
+    current_task().unwrap().free_space_current_task(start_va, end_va)
+}
+
+/// set priority
+pub fn set_priority(prio: isize) {
+    current_task().unwrap().set_priority(prio)
 }

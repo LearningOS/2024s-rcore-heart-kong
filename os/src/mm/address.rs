@@ -1,6 +1,6 @@
 //! Implementation of physical and virtual address and page number.
 use super::PageTableEntry;
-use crate::config::{PAGE_SIZE, PAGE_SIZE_BITS};
+use crate::config::{PAGE_SIZE, PAGE_SIZE_BITS, TRAMPOLINE, TRAP_CONTEXT_BASE};
 use core::fmt::{self, Debug, Formatter};
 /// physical address
 const PA_WIDTH_SV39: usize = 56;
@@ -113,6 +113,12 @@ impl VirtAddr {
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+    /// Get the physical address by ppn
+    pub fn get_pa(&self, ppn: PhysPageNum) -> PhysAddr {
+        let pn: usize = PhysAddr::from(ppn).into();
+        let offset = self.page_offset();
+        (offset | pn).into()
+    }
 }
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
@@ -165,6 +171,16 @@ impl VirtPageNum {
             vpn >>= 9;
         }
         idx
+    }
+    /// is vpn valid
+    pub fn is_valid(&self) -> bool {
+        let trampoline_vpn = VirtPageNum::from(VirtAddr::from(TRAMPOLINE));
+        let trap_va_vpn = VirtPageNum::from(VirtAddr::from(TRAP_CONTEXT_BASE));
+        if *self != trampoline_vpn || *self != trap_va_vpn {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -226,6 +242,16 @@ where
     }
     pub fn get_end(&self) -> T {
         self.r
+    }
+    pub fn is_intersect_with_other(&self, other: &SimpleRange<T>) -> bool {
+        if self.r <= other.l || other.r <= self.l {
+            false
+        } else {
+            true
+        }
+    }
+    pub fn is_super_with_other(&self, other: &SimpleRange<T>) -> bool {
+        self.l <= other.l && self.r >= other.r
     }
 }
 impl<T> IntoIterator for SimpleRange<T>

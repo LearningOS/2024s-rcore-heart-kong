@@ -1,9 +1,11 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
+use crate::syscall::TaskInfo;
+use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
@@ -68,6 +70,17 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// The task syscall times
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// The duration of syscall and task
+    pub time: usize,
+    /// The time of starting task
+    pub start_time: usize,
+    /// Priority
+    pub priority: isize,
+    /// current stride
+    pub stride: usize,
 }
 
 impl TaskControlBlockInner {
@@ -84,6 +97,33 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    /// Update the duration of syscall
+    pub fn update_time(&mut self) {
+        if self.start_time == 0 {
+            self.start_time = get_time_ms();
+        } else {
+            let cur_time = get_time_ms();
+            self.time = cur_time - self.start_time;
+        }
+    }
+
+    /// malloc
+    pub fn malloc(&mut self, start_va: VirtAddr, end_va: VirtAddr, perm: u8) -> isize {
+        if self.memory_set.malloc(start_va, end_va, perm).is_ok() {
+            0
+        } else {
+            -1
+        }
+    }
+
+    /// free
+    pub fn free(&mut self, start_va: usize, end_va: usize) -> isize {
+        if self.memory_set.free(start_va.into(), end_va.into()).is_ok() {
+            0
+        } else {
+            -1
+        }
     }
 }
 
@@ -118,6 +158,11 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    time: 0,
+                    start_time: 0,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         };
@@ -191,6 +236,11 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    time: 0,
+                    start_time: 0,
+                    priority: 16,
+                    stride: 0,
                 })
             },
         });
@@ -204,6 +254,12 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+    /// parent process spawn the child process
+    pub fn spawn(&self, elf: &[u8]) -> Arc<Self> {
+        let tcb = Arc::new(TaskControlBlock::new(elf));
+        self.inner_exclusive_access().children.push(tcb.clone());
+        tcb
     }
 
     /// get pid of process
@@ -235,6 +291,37 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// Get the info of current `Running` task
+    pub fn get_current_task_info(&self, ti: &mut TaskInfo) {
+        let inner = self.inner_exclusive_access();
+        ti.update(inner.task_status.clone(), inner.syscall_times.clone(), inner.time);
+    }
+
+    /// Change the syscall times of current `Running` task
+    pub fn change_current_task(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        inner.syscall_times[syscall_id] += 1;
+        inner.update_time();
+    }
+
+    /// malloc
+    pub fn malloc_space_current_task(&self, start_va: usize, end_va: usize, perm: u8) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        inner.malloc(start_va.into(), end_va.into(), perm)
+    }
+
+    /// free
+    pub fn free_space_current_task(&self, start_va: usize, end_va: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        inner.free(start_va, end_va)
+    }
+
+    /// set priority
+    pub fn set_priority(&self, prio: isize) {
+        let mut inner = self.inner.exclusive_access();
+        inner.priority = prio;
     }
 }
 
