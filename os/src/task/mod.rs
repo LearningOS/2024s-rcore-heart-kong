@@ -21,6 +21,7 @@ use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
+use crate::syscall::TaskInfo;
 
 pub use context::TaskContext;
 
@@ -153,6 +154,36 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
+    /// Get the info of current `Running` task
+    fn get_current_task_info(&self, ti: &mut TaskInfo) {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &inner.tasks[current];
+        ti.update(task.task_status, task.syscall_times, task.time);
+    }
+
+    /// Change the syscall times of current `Running` task
+    fn change_current_task(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times[syscall_id] += 1;
+        inner.tasks[current].update_time();
+    }
+
+    /// malloc
+    fn malloc_space_current_task(&self, start_va: usize, end_va: usize, perm: u8) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].malloc(start_va.into(), end_va.into(), perm)
+    }
+
+    /// free
+    fn free_space_current_task(&self, start_va: usize, end_va: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].free(start_va, end_va)
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +232,23 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Get the info of current `Running` task
+pub fn get_currnet_task_info(ti: &mut TaskInfo) {
+    TASK_MANAGER.get_current_task_info(ti);
+}
+
+/// Change the syscall times of current `Running` task
+pub fn change_current_task(syscall_id: usize) {
+    TASK_MANAGER.change_current_task(syscall_id);
+}
+/// Malloc space
+pub fn malloc_space_current_task(start_va: usize, end_va: usize, perm: u8) -> isize {
+    TASK_MANAGER.malloc_space_current_task(start_va, end_va, perm)
+}
+
+/// free space
+pub fn free_space_current_task(start_va: usize, end_va: usize) -> isize {
+    TASK_MANAGER.free_space_current_task(start_va, end_va)
 }

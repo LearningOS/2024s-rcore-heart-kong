@@ -1,9 +1,10 @@
 //! Types related to task management
 use super::TaskContext;
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{MAX_SYSCALL_NUM, TRAP_CONTEXT_BASE};
 use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
+use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
 
 /// The task control block (TCB) of a task.
@@ -28,6 +29,13 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// The task syscall times
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// The duration of syscall and task
+    pub time: usize,
+    /// The time of starting task
+    pub start_time: usize
 }
 
 impl TaskControlBlock {
@@ -63,6 +71,9 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            syscall_times: [0; MAX_SYSCALL_NUM],
+            time: 0,
+            start_time: 0,
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -94,6 +105,34 @@ impl TaskControlBlock {
             Some(old_break)
         } else {
             None
+        }
+    }
+
+    /// Update the duration of syscall
+    pub fn update_time(&mut self) {
+        if self.start_time == 0 {
+            self.start_time = get_time_ms();
+        } else {
+            let cur_time = get_time_ms();
+            self.time = cur_time - self.start_time;
+        }
+    }
+
+    /// malloc
+    pub fn malloc(&mut self, start_va: VirtAddr, end_va: VirtAddr, perm: u8) -> isize {
+        if self.memory_set.malloc(start_va, end_va, perm).is_ok() {
+            0
+        } else {
+            -1
+        }
+    }
+
+    /// free
+    pub fn free(&mut self, start_va: usize, end_va: usize) -> isize {
+        if self.memory_set.free(start_va.into(), end_va.into()).is_ok() {
+            0
+        } else {
+            -1
         }
     }
 }

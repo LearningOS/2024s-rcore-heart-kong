@@ -78,6 +78,42 @@ impl MemorySet {
             PTEFlags::R | PTEFlags::X,
         );
     }
+    /// new space
+    pub fn malloc(&mut self, start: VirtAddr, end: VirtAddr, perm: u8) -> Result<(), ()> {
+        let perm = MapPermission::from_bits(perm).unwrap() | MapPermission::U;
+        let area = MapArea::new(start, end, MapType::Framed, perm);
+        if area.get_vpn_range().into_iter().any(|x| !x.is_valid()) {
+            return Err(())
+        }
+        if self.has_mapped(area.get_vpn_range()) {
+            return Err(());
+        }
+        self.push(
+            area,
+            None
+        );
+        Ok(())
+    }
+    /// free space
+    pub fn free(&mut self, start: VirtAddr, end: VirtAddr) -> Result<(), ()> {
+        let range = VPNRange::new(start.floor(), end.ceil());
+        let area_idx = self
+            .areas
+            .iter()
+            .position(|area| area.get_vpn_range().is_super_with_other(&range));
+        if let Some(idx) = area_idx {
+            self.areas[idx].unmap(&mut self.page_table);
+            self.areas.remove(idx);
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+    /// has mapped before mapping
+    fn has_mapped(&self, range: VPNRange) -> bool {
+        self.areas.iter().any(|area| area.get_vpn_range().is_intersect_with_other(&range) )
+    }
+
     /// Without kernel stacks.
     pub fn new_kernel() -> Self {
         let mut memory_set = Self::new_bare();
@@ -355,6 +391,10 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    /// get vpn range
+    pub fn get_vpn_range(&self) -> VPNRange {
+        self.vpn_range
     }
 }
 

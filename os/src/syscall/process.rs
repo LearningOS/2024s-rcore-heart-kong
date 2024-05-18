@@ -1,9 +1,8 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+    config::{CLOCK_FREQ, MAX_SYSCALL_NUM}, mm::{get_pa_by_va, VirtAddr}, task::{
+        change_program_brk, current_user_token, exit_current_and_run_next, free_space_current_task, get_currnet_task_info, malloc_space_current_task, suspend_current_and_run_next, TaskStatus
+    }, timer::get_time
 };
 
 #[repr(C)]
@@ -24,6 +23,15 @@ pub struct TaskInfo {
     time: usize,
 }
 
+impl TaskInfo {
+    /// update
+    pub fn update(&mut self, status: TaskStatus, syscall_times: [u32; MAX_SYSCALL_NUM], time: usize) {
+        self.status = status;
+        self.syscall_times = syscall_times;
+        self.time = time;
+    }
+}
+
 /// task exits and submit an exit code
 pub fn sys_exit(_exit_code: i32) -> ! {
     trace!("kernel: sys_exit");
@@ -41,29 +49,51 @@ pub fn sys_yield() -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let ppn = get_pa_by_va(current_user_token(), ts as *const _ as usize);
+    let ts: &mut TimeVal = ppn.get_mut();
+    let time = get_time();
+    ts.sec = time / CLOCK_FREQ;
+    ts.usec = time * 1_000_000 / CLOCK_FREQ;
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
-pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
+pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    let ppn = get_pa_by_va(current_user_token(), ti as *const _ as usize);
+    let ti: &mut TaskInfo = ppn.get_mut();
+    get_currnet_task_info(ti);
+    0
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    let start_va = VirtAddr::from(start);
+    if (start_va.page_offset()) != 0 {
+        return -1
+    }
+    let end_va = VirtAddr::from(start + len);
+    if (port >> 3) != 0 || port == 0 {
+        return -1
+    }
+    let port = port << 1;
+    malloc_space_current_task(start_va.into(), end_va.into(), port as u8)
 }
 
 // YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    let start_va = VirtAddr::from(start);
+    if (start_va.page_offset()) != 0 {
+        return -1
+    }
+    let end_va = VirtAddr::from(start + len);
+    free_space_current_task(start_va.into(), end_va.into())
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
