@@ -2,6 +2,7 @@
 
 use super::id::TaskUserRes;
 use super::{kstack_alloc, KernelStack, ProcessControlBlock, TaskContext};
+use crate::config::MAX_THREAD_NUM;
 use crate::trap::TrapContext;
 use crate::{mm::PhysPageNum, sync::UPSafeCell};
 use alloc::sync::{Arc, Weak};
@@ -41,6 +42,15 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
     /// It is set when active exit or execution error occurs
     pub exit_code: Option<i32>,
+    
+    /// mutex demand
+    pub mutex_demand:[usize; MAX_THREAD_NUM],
+    /// semaphore demand
+    pub sem_need:[usize; MAX_THREAD_NUM],
+    /// 
+    pub mutex_allot:[usize; MAX_THREAD_NUM],
+    /// 已分配的sem资源
+    pub sem_allot:[usize; MAX_THREAD_NUM],
 }
 
 impl TaskControlBlockInner {
@@ -75,6 +85,10 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kstack_top),
                     task_status: TaskStatus::Ready,
                     exit_code: None,
+                    mutex_demand:[0; MAX_THREAD_NUM],
+                    sem_need:[0; MAX_THREAD_NUM],
+                    mutex_allot:[0; MAX_THREAD_NUM],
+                    sem_allot:[0; MAX_THREAD_NUM],
                 })
             },
         }

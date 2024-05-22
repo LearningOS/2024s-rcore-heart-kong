@@ -121,6 +121,13 @@ impl VirtAddr {
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+    
+    /// Get the physical address by ppn
+    pub fn get_pa(&self, ppn: PhysPageNum) -> PhysAddr {
+        let pn: usize = PhysAddr::from(ppn).into();
+        let offset = self.page_offset();
+        (offset | pn).into()
+    }
 }
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {

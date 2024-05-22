@@ -5,6 +5,7 @@ use super::manager::insert_into_pid2process;
 use super::TaskControlBlock;
 use super::{add_task, SignalFlags};
 use super::{pid_alloc, PidHandle};
+use crate::config::MAX_THREAD_NUM;
 use crate::fs::{File, Stdin, Stdout};
 use crate::mm::{translated_refmut, MemorySet, KERNEL_SPACE};
 use crate::sync::{Condvar, Mutex, Semaphore, UPSafeCell};
@@ -49,6 +50,12 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    ///
+    pub lock_detect: bool,
+    /// mutex available
+    pub mutex_available: [usize; MAX_THREAD_NUM],
+    /// sem available
+    pub sem_available:[usize; MAX_THREAD_NUM],
 }
 
 impl ProcessControlBlockInner {
@@ -119,6 +126,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    lock_detect: false,
+                    mutex_available: [0; MAX_THREAD_NUM],
+                    sem_available: [0; MAX_THREAD_NUM],
                 })
             },
         });
@@ -245,6 +255,9 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    lock_detect: parent.lock_detect,
+                    mutex_available: parent.mutex_available.clone(),
+                    sem_available: parent.sem_available.clone(),
                 })
             },
         });

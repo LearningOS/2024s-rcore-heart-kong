@@ -274,3 +274,12 @@ impl Iterator for UserBufferIterator {
         }
     }
 }
+
+/// Get pa by va
+pub fn get_pa_by_va(token: usize, va: usize) -> PhysAddr {
+    let page_table = PageTable::from_token(token);
+    let va = VirtAddr::from(va);
+    let vpn = va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    va.get_pa(ppn)
+}
